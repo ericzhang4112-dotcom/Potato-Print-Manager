@@ -1,63 +1,11 @@
-const STORAGE_KEY = 'potato-print-manager-state';
+const STORAGE_KEY = 'potato-print-manager-state-v3';
+let userStorageKey = STORAGE_KEY;
 
 const defaultState = {
-  queue: [
-    {
-      id: crypto.randomUUID(),
-      name: 'Desk Organizer V2',
-      material: 'PLA',
-      urgency: 'High',
-      note: 'Need engraved logo on face',
-      createdAt: new Date().toISOString(),
-      plateCount: 2,
-      plates: [
-        { id: crypto.randomUUID(), name: 'Plate 1', completed: false },
-        { id: crypto.randomUUID(), name: 'Plate 2', completed: true }
-      ],
-      modelName: 'desk_organizer_v2.stl',
-      modelPreview: ''
-    },
-    {
-      id: crypto.randomUUID(),
-      name: 'Cable Clip Set',
-      material: 'PETG',
-      urgency: 'Normal',
-      note: 'Small batch for office',
-      createdAt: new Date().toISOString(),
-      plateCount: 1,
-      plates: [{ id: crypto.randomUUID(), name: 'Plate 1', completed: false }],
-      modelName: 'cable_clip_set.obj',
-      modelPreview: ''
-    }
-  ],
-  filaments: [
-    {
-      id: crypto.randomUUID(),
-      name: 'Prusa PLA',
-      color: 'Black',
-      brand: 'Prusa',
-      type: 'PLA',
-      price: 24.99,
-      amount: 1000,
-      colorHex: '#111827',
-      pricePerGram: 0.02499,
-      note: 'Good for detail parts'
-    }
-  ],
+  queue: [],
+  filaments: [],
   outFilaments: [],
-  history: [
-    {
-      id: crypto.randomUUID(),
-      printName: 'Desk Organizer V2',
-      filamentName: 'Prusa PLA',
-      color: 'Black',
-      brand: 'Prusa',
-      type: 'PLA',
-      cost: 8.4,
-      note: 'Used for main body and support frame',
-      date: new Date().toISOString()
-    }
-  ],
+  history: [],
   settings: {
     retentionEnabled: false,
     retentionDays: 0,
@@ -68,6 +16,8 @@ const defaultState = {
 let state = loadState();
 let draggedQueueId = null;
 let pendingCompletionJobId = null;
+let authMode = 'signin';
+let supabaseClient = null;
 
 const els = {
   navButtons: document.querySelectorAll('.nav-btn'),
@@ -122,9 +72,41 @@ const els = {
   themeToggle: document.getElementById('themeToggle')
 };
 
+const authEls = {
+  view: document.getElementById('authView'),
+  app: document.getElementById('appView'),
+  form: document.getElementById('authForm'),
+  title: document.getElementById('authTitle'),
+  message: document.getElementById('authMessage'),
+  error: document.getElementById('authError'),
+  email: document.getElementById('authEmail'),
+  password: document.getElementById('authPassword'),
+  usernameField: document.getElementById('usernameField'),
+  username: document.getElementById('authUsername'),
+  submit: document.getElementById('authSubmit'),
+  modeToggle: document.getElementById('authModeToggle'),
+  google: document.getElementById('googleSignIn'),
+  signOut: document.getElementById('signOutButton')
+};
+
+const accountEls = {
+  avatar: document.getElementById('accountAvatar'),
+  username: document.getElementById('accountUsername'),
+  email: document.getElementById('accountEmail'),
+  form: document.getElementById('accountForm'),
+  picture: document.getElementById('accountPicture'),
+  usernameInput: document.getElementById('accountUsernameInput'),
+  password: document.getElementById('accountPassword'),
+  message: document.getElementById('accountMessage'),
+  deleteButton: document.getElementById('deleteAccountButton')
+};
+
+let currentSession = null;
+let remoteDataReady = false;
+
 function loadState() {
   try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    const saved = JSON.parse(localStorage.getItem(userStorageKey));
     if (!saved) return structuredClone(defaultState);
 
     return {
@@ -152,8 +134,47 @@ function loadState() {
   }
 }
 
-function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+async function saveState() {
+  localStorage.setItem(userStorageKey, JSON.stringify(state));
+  if (!supabaseClient || !currentSession || !remoteDataReady) return;
+
+  const { error } = await supabaseClient
+    .from('user_print_manager_data')
+    .upsert({ user_id: currentSession.user.id, data: state }, { onConflict: 'user_id' });
+  if (error) console.error('Could not save print manager data:', error.message);
+}
+
+async function loadRemoteState() {
+  if (!supabaseClient || !currentSession) return;
+
+  const localState = state;
+  const { data, error } = await supabaseClient
+    .from('user_print_manager_data')
+    .select('data')
+    .eq('user_id', currentSession.user.id)
+    .maybeSingle();
+
+  if (error) {
+    console.error('Could not load print manager data:', error.message);
+    remoteDataReady = true;
+    return;
+  }
+
+  if (data?.data) {
+    state = {
+      ...structuredClone(defaultState),
+      ...data.data,
+      settings: { ...defaultState.settings, ...(data.data.settings || {}) }
+    };
+  } else {
+    state = localState;
+    await supabaseClient
+      .from('user_print_manager_data')
+      .upsert({ user_id: currentSession.user.id, data: state }, { onConflict: 'user_id' });
+  }
+
+  remoteDataReady = true;
+  render();
 }
 
 function getPricePerGram(filament) {
@@ -752,6 +773,15 @@ function deleteHistoryEntries(ids) {
   render();
 }
 
+function animateRemoval(element, callback) {
+  if (!element) {
+    callback();
+    return;
+  }
+  element.classList.add('is-removing');
+  window.setTimeout(callback, 280);
+}
+
 function moveQueueItem(id, direction) {
   const index = state.queue.findIndex((job) => job.id === id);
   if (index === -1) return;
@@ -901,9 +931,11 @@ function bindEvents() {
     if (action === 'down') moveQueueItem(id, 'down');
     if (action === 'complete') completeQueueItem(id);
     if (action === 'delete') {
-      state.queue = state.queue.filter((job) => job.id !== id);
-      saveState();
-      render();
+      animateRemoval(target.closest('.queue-item'), () => {
+        state.queue = state.queue.filter((job) => job.id !== id);
+        saveState();
+        render();
+      });
     }
   });
 
@@ -913,12 +945,20 @@ function bindEvents() {
 
     const filamentId = target.dataset.filamentId;
     if (target.dataset.filamentAction === 'delete') {
-      state.filaments = state.filaments.filter((filament) => filament.id !== filamentId);
+      animateRemoval(target.closest('.filament-card'), () => {
+        state.filaments = state.filaments.filter((filament) => filament.id !== filamentId);
+        saveState();
+        render();
+      });
+      return;
     } else if (target.dataset.filamentAction === 'delete-out') {
-      state.outFilaments = state.outFilaments.filter((filament) => filament.id !== filamentId);
+      animateRemoval(target.closest('.filament-card'), () => {
+        state.outFilaments = state.outFilaments.filter((filament) => filament.id !== filamentId);
+        saveState();
+        render();
+      });
+      return;
     }
-    saveState();
-    render();
   });
 
   els.queueList.addEventListener('change', (event) => {
@@ -1026,7 +1066,185 @@ function render() {
   saveState();
 }
 
+function setAuthMode(mode) {
+  authMode = mode;
+  const isSignUp = mode === 'signup';
+  authEls.title.textContent = isSignUp ? 'Create your account' : 'Welcome back';
+  authEls.message.textContent = isSignUp ? 'Create an account to start managing your printers.' : 'Sign in to manage your print queue and filament library.';
+  authEls.usernameField.classList.toggle('hidden', !isSignUp);
+  authEls.username.required = isSignUp;
+  authEls.password.autocomplete = isSignUp ? 'new-password' : 'current-password';
+  authEls.submit.textContent = isSignUp ? 'Create account' : 'Sign in';
+  authEls.modeToggle.textContent = isSignUp ? 'Already have an account? Sign in' : 'Create an account';
+  authEls.error.textContent = '';
+}
+
+function showAuthError(message) {
+  authEls.error.textContent = message;
+}
+
+async function submitAuth(event) {
+  event.preventDefault();
+  if (!supabaseClient) {
+    showAuthError('Add your Supabase URL and anon key in supabase-config.js first.');
+    return;
+  }
+
+  authEls.submit.disabled = true;
+  authEls.error.textContent = '';
+  const email = authEls.email.value.trim();
+  const password = authEls.password.value;
+  const result = authMode === 'signup'
+    ? await supabaseClient.auth.signUp({ email, password, options: { data: { username: authEls.username.value.trim() } } })
+    : await supabaseClient.auth.signInWithPassword({ email, password });
+
+  authEls.submit.disabled = false;
+  if (result.error) {
+    showAuthError(result.error.message);
+  } else if (authMode === 'signup' && !result.data.session) {
+    showAuthError('Account created. Check your email to confirm it, then sign in.');
+  }
+}
+
+async function signInWithGoogle() {
+  if (!supabaseClient) {
+    showAuthError('Add your Supabase URL and anon key in supabase-config.js first.');
+    return;
+  }
+  const { error } = await supabaseClient.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: window.location.origin + window.location.pathname }
+  });
+  if (error) showAuthError(error.message);
+}
+
+function showAuthenticatedApp(session) {
+  currentSession = session;
+  userStorageKey = `${STORAGE_KEY}-${session.user.id}`;
+  state = loadState();
+  renderAccount(session.user);
+  authEls.view.classList.add('hidden');
+  authEls.app.classList.remove('hidden');
+  remoteDataReady = false;
+  loadRemoteState();
+}
+
+function showSignedOutApp() {
+  currentSession = null;
+  remoteDataReady = false;
+  authEls.app.classList.add('hidden');
+  authEls.view.classList.remove('hidden');
+}
+
+function renderAccount(user) {
+  const metadata = user.user_metadata || {};
+  const username = metadata.username || metadata.full_name || user.email?.split('@')[0] || 'Account';
+  const picture = metadata.avatar_data || metadata.avatar_url || '';
+  accountEls.username.textContent = username;
+  accountEls.email.textContent = user.email || '';
+  accountEls.usernameInput.value = username;
+  accountEls.avatar.textContent = picture ? '' : username.charAt(0).toUpperCase();
+  accountEls.avatar.style.backgroundImage = picture ? `url("${picture}")` : '';
+  accountEls.avatar.classList.toggle('has-image', Boolean(picture));
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener('load', () => resolve(reader.result));
+    reader.addEventListener('error', reject);
+    reader.readAsDataURL(file);
+  });
+}
+
+async function saveAccountChanges(event) {
+  event.preventDefault();
+  if (!supabaseClient || !currentSession) return;
+
+  accountEls.message.textContent = 'Saving...';
+  const metadata = { ...(currentSession.user.user_metadata || {}), username: accountEls.usernameInput.value.trim() || 'Account' };
+  const picture = accountEls.picture.files[0];
+  if (picture) metadata.avatar_data = await readFileAsDataUrl(picture);
+
+  const updates = { data: metadata };
+  if (accountEls.password.value) updates.password = accountEls.password.value;
+  const { data, error } = await supabaseClient.auth.updateUser(updates);
+  if (error) {
+    accountEls.message.textContent = error.message;
+    return;
+  }
+
+  currentSession.user = data.user;
+  renderAccount(data.user);
+  accountEls.password.value = '';
+  accountEls.picture.value = '';
+  accountEls.message.textContent = 'Account updated.';
+}
+
+async function deleteAccount() {
+  if (!supabaseClient || !currentSession) return;
+  const confirmed = window.confirm('Delete your account and sign out? This cannot be undone.');
+  if (!confirmed) return;
+
+  accountEls.message.textContent = 'Deleting account...';
+  const { error } = await supabaseClient.functions.invoke('delete-account');
+  if (error) {
+    accountEls.message.textContent = 'Account deletion requires the Supabase delete-account Edge Function.';
+    return;
+  }
+  await supabaseClient.auth.signOut();
+}
+
+async function initializeAuth() {
+  if (!window.supabase || !window.POTATO_SUPABASE_URL || !window.POTATO_SUPABASE_ANON_KEY || window.POTATO_SUPABASE_URL.includes('YOUR_') || window.POTATO_SUPABASE_ANON_KEY.includes('YOUR_')) {
+    showSignedOutApp();
+    return;
+  }
+
+  if (window.POTATO_SUPABASE_ANON_KEY.startsWith('sb_secret_')) {
+    showAuthError('This is a secret Supabase key. Replace it with the project publishable or anon key; never use a secret key in browser code.');
+    showSignedOutApp();
+    return;
+  }
+
+  supabaseClient = window.supabase.createClient(window.POTATO_SUPABASE_URL, window.POTATO_SUPABASE_ANON_KEY);
+  supabaseClient.auth.onAuthStateChange((_event, session) => {
+    if (session) showAuthenticatedApp(session);
+    else showSignedOutApp();
+  });
+
+  const code = new URLSearchParams(window.location.search).get('code');
+  if (code) {
+    const { error } = await supabaseClient.auth.exchangeCodeForSession(code);
+    if (error) {
+      showAuthError(error.message);
+      showSignedOutApp();
+      return;
+    }
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }
+
+  const { data, error } = await supabaseClient.auth.getSession();
+  if (error) {
+    showAuthError(error.message);
+    showSignedOutApp();
+    return;
+  }
+  if (data.session) showAuthenticatedApp(data.session);
+  else showSignedOutApp();
+}
+
 bindEvents();
 render();
 renderPlateNameInputs(1);
 setActiveView('queue');
+
+authEls.form.addEventListener('submit', submitAuth);
+authEls.google.addEventListener('click', signInWithGoogle);
+authEls.modeToggle.addEventListener('click', () => setAuthMode(authMode === 'signin' ? 'signup' : 'signin'));
+authEls.signOut.addEventListener('click', async () => {
+  if (supabaseClient) await supabaseClient.auth.signOut();
+});
+accountEls.form.addEventListener('submit', saveAccountChanges);
+accountEls.deleteButton.addEventListener('click', deleteAccount);
+initializeAuth();

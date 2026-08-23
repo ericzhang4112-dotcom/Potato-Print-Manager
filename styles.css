@@ -34,6 +34,204 @@ body {
   overflow: hidden;
 }
 
+.auth-view {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: linear-gradient(135deg, #0a0f1d 0%, #101826 100%);
+}
+
+.auth-card {
+  width: min(430px, 100%);
+  padding: 34px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: rgba(23, 31, 49, 0.94);
+  box-shadow: 0 24px 70px rgba(2, 6, 23, 0.55);
+  animation: contentSlideIn 0.35s ease both;
+}
+
+.auth-logo {
+  width: 68px;
+  height: 68px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 20px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  font-size: 2.35rem;
+}
+
+.auth-card h1 {
+  margin: 8px 0;
+}
+
+.auth-form {
+  display: grid;
+  gap: 14px;
+  margin-top: 22px;
+}
+
+.google-btn,
+.text-btn,
+.sign-out-btn {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 11px 14px;
+  color: var(--text);
+  background: rgba(148, 163, 184, 0.08);
+  font-weight: 700;
+}
+
+.google-btn {
+  margin-top: 20px;
+  background: #ffffff;
+  color: #1f2937;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0;
+  color: var(--muted);
+  text-align: center;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  height: 1px;
+  flex: 1;
+  background: var(--border);
+}
+
+.auth-error {
+  min-height: 20px;
+  margin: 14px 0 4px;
+  color: #fca5a5;
+  font-size: 0.85rem;
+}
+
+.auth-legal {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.auth-legal a {
+  color: var(--primary);
+}
+
+.text-btn {
+  border: 0;
+  padding: 6px;
+  background: transparent;
+  color: var(--primary);
+}
+
+.sign-out-btn {
+  margin-top: auto;
+}
+
+.account-area {
+  display: grid;
+  gap: 10px;
+  margin-top: auto;
+}
+
+.account-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(23, 31, 49, 0.75);
+}
+
+.account-avatar {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 40px;
+  border-radius: 50%;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 1.1rem;
+  font-weight: 800;
+  background-position: center;
+  background-size: cover;
+}
+
+.account-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.account-copy strong,
+.account-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-settings {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(23, 31, 49, 0.75);
+}
+
+.account-settings summary {
+  cursor: pointer;
+  padding: 10px;
+  color: var(--text);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.account-form {
+  display: grid;
+  gap: 10px;
+  padding: 0 10px 10px;
+}
+
+.account-form label {
+  gap: 5px;
+  font-size: 0.75rem;
+}
+
+.account-form input {
+  padding: 8px 9px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+}
+
+.account-message {
+  min-height: 16px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.delete-account-btn {
+  width: calc(100% - 20px);
+  margin: 0 10px 10px;
+  border: 0;
+  background: transparent;
+  color: #fca5a5;
+  cursor: pointer;
+  font-size: 0.78rem;
+  text-align: left;
+}
+
 button, input, select, textarea {
   font: inherit;
 }
@@ -56,6 +254,14 @@ button {
   display: flex;
   flex-direction: column;
   gap: 22px;
+}
+
+.sidebar .account-area {
+  margin-top: auto;
+}
+
+.sidebar .sign-out-btn {
+  margin-top: 0;
 }
 
 .brand-block {
@@ -189,6 +395,11 @@ button {
 
 .queue-item.is-removing {
   animation: queueFadeOut 0.35s ease forwards;
+}
+
+.filament-card.is-removing,
+.history-entry.is-removing {
+  animation: queueFadeOut 0.28s ease forwards;
 }
 
 @keyframes queueFadeOut {
