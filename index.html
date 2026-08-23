@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Potato 3D Print Manager</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='86'%3E%F0%9F%A5%94%3C/text%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand-block">
+          <div class="brand-mark">🥔</div>
+          <div>
+            <h1>Potato 3D Print Manager</h1>
+          </div>
+        </div>
+
+        <nav class="nav" aria-label="Main navigation">
+          <button class="nav-btn active" data-view="queue">Print Queue</button>
+          <button class="nav-btn" data-view="filament">Filament</button>
+          <button class="nav-btn" data-view="history">Print History</button>
+        </nav>
+
+        <div class="sidebar-card">
+          <p class="muted">Status</p>
+          <h3 id="statusSummary">0 queued</h3>
+        </div>
+      </aside>
+
+      <main class="content">
+        <section class="view active" id="queueView">
+          <header class="page-header">
+            <div>
+              <p class="eyebrow">Overview</p>
+              <h2>Print Queue</h2>
+            </div>
+          </header>
+
+          <div class="panel-grid queue-page-grid two-columns">
+            <form id="queueForm" class="card form-card">
+              <h3>Add Print Job</h3>
+              <div class="field-row">
+                <label>
+                  <span>Print name</span>
+                  <input type="text" id="queueName" placeholder="Figure-8 test print" />
+                </label>
+              </div>
+
+              <div class="field-row inline-fields">
+                <label>
+                  <span>Material</span>
+                  <select id="queueMaterial">
+                    <option value="">Select filament</option>
+                    <option value="other">Other...</option>
+                  </select>
+                  <span id="queueMaterialColor" class="selected-filament-color"></span>
+                </label>
+                <label>
+                  <span>Urgency</span>
+                  <select id="queueUrgency">
+                    <option value="High">High</option>
+                    <option value="Normal" selected>Normal</option>
+                    <option value="Low">Low</option>
+                  </select>
+                </label>
+              </div>
+
+              <div id="queueMaterialOtherWrapper" class="field-row hidden">
+                <label>
+                  <span>Other material</span>
+                  <input type="text" id="queueMaterialOther" placeholder="Enter a material name" />
+                </label>
+              </div>
+
+              <div class="field-row">
+                <label>
+                  <span>Plate count</span>
+                  <input type="number" id="queuePlateCount" min="1" step="1" value="1" placeholder="1" />
+                </label>
+              </div>
+
+              <div class="field-row">
+                <label>
+                  <span>Filament needed (g)</span>
+                  <input type="number" id="queueFilamentNeeded" min="0" step="1" placeholder="250" />
+                </label>
+              </div>
+
+              <div id="queuePlateNamesContainer" class="plate-name-container"></div>
+              <div id="queuePlateFilamentContainer" class="plate-name-container"></div>
+
+              <label>
+                <span>Notes</span>
+                <textarea id="queueNote" rows="3" placeholder="Layer height, color notes, size, or instructions"></textarea>
+              </label>
+
+              <button type="submit" class="primary-btn">Add to queue</button>
+            </form>
+
+            <div class="card list-card">
+              <div class="card-header-row">
+                <h3>Queued Prints</h3>
+                <span class="badge" id="queueCountBadge">0</span>
+              </div>
+              <div id="queueList" class="stack-list"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="filamentView">
+          <header class="page-header">
+            <div>
+              <p class="eyebrow">Materials</p>
+              <h2>Filament</h2>
+            </div>
+          </header>
+
+          <div class="filament-page-grid">
+            <div class="filament-forms">
+              <form id="filamentForm" class="card form-card">
+                <h3>Add Filament</h3>
+                <div class="field-row inline-fields">
+                  <label>
+                    <span>Name</span>
+                    <input type="text" id="filamentName" placeholder="Prusa PLA" />
+                  </label>
+                  <label>
+                    <span>Price ($)</span>
+                    <input type="number" id="filamentPrice" min="0" step="0.01" placeholder="25.00" />
+                  </label>
+                </div>
+
+                <div class="field-row inline-fields">
+                  <label>
+                    <span>Color name</span>
+                    <input type="text" id="filamentColor" placeholder="Red" />
+                  </label>
+                  <label>
+                    <span>Color</span>
+                    <input type="color" id="filamentColorPicker" value="#7dd3fc" />
+                  </label>
+                </div>
+
+                <div class="field-row inline-fields">
+                  <label>
+                    <span>Brand</span>
+                    <input type="text" id="filamentBrand" placeholder="Bambu" />
+                  </label>
+                  <label>
+                    <span>Type</span>
+                    <input type="text" id="filamentType" placeholder="PLA / PETG / ABS" />
+                  </label>
+                </div>
+
+                <label>
+                  <span>Amount (g)</span>
+                  <input type="number" id="filamentAmount" min="0" step="1" placeholder="1000" />
+                </label>
+
+                <label>
+                  <span>Note</span>
+                  <textarea id="filamentNote" rows="2" placeholder="Storage notes or special details"></textarea>
+                </label>
+
+                <button type="submit" class="primary-btn">Add filament</button>
+              </form>
+
+              <form id="expenseForm" class="card form-card">
+                <h3>Add Expense</h3>
+                <div class="field-row inline-fields">
+                  <label>
+                    <span>Filament</span>
+                    <select id="expenseFilament"></select>
+                    <span id="expenseFilamentColor" class="selected-filament-color"></span>
+                  </label>
+                  <label>
+                    <span>Amount used (g)</span>
+                    <input type="number" id="expenseAmount" min="0" step="1" placeholder="25" />
+                  </label>
+                </div>
+
+                <div class="field-row">
+                  <label>
+                    <span>Used for print</span>
+                    <select id="expensePrint"></select>
+                  </label>
+                </div>
+
+                <div id="expensePrintOtherWrapper" class="field-row hidden">
+                  <label>
+                    <span>Other use</span>
+                    <input type="text" id="expensePrintOther" placeholder="Describe what it was used for" />
+                  </label>
+                </div>
+
+                <label>
+                  <span>Usage note</span>
+                  <textarea id="expenseNote" rows="2" placeholder="Optional note"></textarea>
+                </label>
+
+                <button type="submit" class="primary-btn">Record expense</button>
+              </form>
+            </div>
+
+            <div class="card filament-library-card">
+              <div class="card-header-row">
+                <h3>Filament Library</h3>
+                <span class="badge" id="filamentCountBadge">0</span>
+              </div>
+              <div id="filamentList" class="inventory-grid"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="historyView">
+          <header class="page-header">
+            <div>
+              <p class="eyebrow">Records</p>
+              <h2>Print History</h2>
+            </div>
+          </header>
+
+          <div class="card full-width-card">
+            <div class="card-header-row">
+              <h3>All usage and expenses</h3>
+              <div class="history-tools">
+                <label class="select-all-history"><input type="checkbox" id="historySelectAll" /> Select all</label>
+                <button type="button" class="small-btn delete-btn" id="deleteSelectedHistory">Delete selected</button>
+                <button type="button" class="small-btn delete-btn" id="deleteAllHistory">Delete all</button>
+                <span class="badge" id="historyCountBadge">0</span>
+              </div>
+            </div>
+            <div id="historyList" class="history-list"></div>
+          </div>
+          <div class="card retention-card">
+            <div class="card-header-row">
+              <h3>History retention</h3>
+            </div>
+            <div class="retention-controls">
+              <label class="toggle-row">
+                <span>Auto-delete history</span>
+                <input type="checkbox" id="retentionEnabled" />
+              </label>
+              <label>
+                <span>Retention period</span>
+                <select id="retentionPeriod">
+                  <option value="0">Off</option>
+                  <option value="30">30 days</option>
+                  <option value="90">90 days</option>
+                  <option value="180">180 days</option>
+                  <option value="365">365 days</option>
+                </select>
+              </label>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="completionModal" class="modal hidden" aria-hidden="true">
+      <div class="modal-backdrop" data-close-modal="true"></div>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="completionModalTitle">
+        <div class="modal-header">
+          <h3 id="completionModalTitle">Record filament usage</h3>
+          <button type="button" class="modal-close" data-close-modal="true" aria-label="Close modal">×</button>
+        </div>
+
+        <div class="modal-body">
+          <div class="field-row">
+            <label>
+              <span>Filament</span>
+              <select id="completionFilament"></select>
+              <span id="completionFilamentColor" class="selected-filament-color"></span>
+            </label>
+          </div>
+
+          <div class="field-row inline-fields">
+            <label>
+              <span>Filament used (g)</span>
+              <input type="number" id="completionAmountUsed" min="0" step="1" placeholder="0" />
+            </label>
+            <label>
+              <span>Buffer (g)</span>
+              <input type="number" id="completionBuffer" min="0" step="1" placeholder="0" />
+            </label>
+          </div>
+
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="secondary-btn" id="skipCompletionSave">Complete without tracking</button>
+          <button type="button" class="primary-btn" id="saveCompletionRecord">Save & complete</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
