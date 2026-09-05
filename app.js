@@ -1118,15 +1118,21 @@ async function signInWithGoogle() {
   if (error) showAuthError(error.message);
 }
 
-function showAuthenticatedApp(session) {
+async function showAuthenticatedApp(session) {
   currentSession = session;
+  if (currentSession.user.user_metadata?.avatar_data && supabaseClient) {
+    const cleanedMetadata = { ...currentSession.user.user_metadata };
+    delete cleanedMetadata.avatar_data;
+    const { data: cleanedUser } = await supabaseClient.auth.updateUser({ data: cleanedMetadata });
+    if (cleanedUser?.user) currentSession.user = cleanedUser.user;
+  }
   userStorageKey = `${STORAGE_KEY}-${session.user.id}`;
   state = loadState();
   renderAccount(session.user);
   authEls.view.classList.add('hidden');
   authEls.app.classList.remove('hidden');
   remoteDataReady = false;
-  loadRemoteState();
+  await loadRemoteState();
 }
 
 function showSignedOutApp() {
@@ -1139,7 +1145,7 @@ function showSignedOutApp() {
 function renderAccount(user) {
   const metadata = user.user_metadata || {};
   const username = metadata.username || metadata.full_name || user.email?.split('@')[0] || 'Account';
-  const picture = metadata.avatar_data || metadata.avatar_url || '';
+  const picture = metadata.avatar_url || '';
   accountEls.username.textContent = username;
   accountEls.email.textContent = user.email || '';
   accountEls.usernameInput.value = username;
@@ -1148,12 +1154,28 @@ function renderAccount(user) {
   accountEls.avatar.classList.toggle('has-image', Boolean(picture));
 }
 
-function readFileAsDataUrl(file) {
+function resizeProfilePicture(file) {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.addEventListener('load', () => resolve(reader.result));
-    reader.addEventListener('error', reject);
-    reader.readAsDataURL(file);
+    const image = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    image.onload = () => {
+      const size = 256;
+      const scale = Math.min(size / image.width, size / image.height, 1);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(image.width * scale));
+      canvas.height = Math.max(1, Math.round(image.height * scale));
+      canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob((blob) => {
+        URL.revokeObjectURL(objectUrl);
+        if (blob) resolve(blob);
+        else reject(new Error('Could not process profile picture.'));
+      }, 'image/webp', 0.82);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('Could not read profile picture.'));
+    };
+    image.src = objectUrl;
   });
 }
 
@@ -1164,7 +1186,23 @@ async function saveAccountChanges(event) {
   accountEls.message.textContent = 'Saving...';
   const metadata = { ...(currentSession.user.user_metadata || {}), username: accountEls.usernameInput.value.trim() || 'Account' };
   const picture = accountEls.picture.files[0];
-  if (picture) metadata.avatar_data = await readFileAsDataUrl(picture);
+  delete metadata.avatar_data;
+
+  if (picture) {
+    try {
+      const imageBlob = await resizeProfilePicture(picture);
+      const path = `${currentSession.user.id}/avatar.webp`;
+      const { error: uploadError } = await supabaseClient.storage
+        .from('profile-pictures')
+        .upload(path, imageBlob, { contentType: 'image/webp', upsert: true, cacheControl: '3600' });
+      if (uploadError) throw uploadError;
+      const { data: publicData } = supabaseClient.storage.from('profile-pictures').getPublicUrl(path);
+      metadata.avatar_url = `${publicData.publicUrl}?v=${Date.now()}`;
+    } catch (error) {
+      accountEls.message.textContent = `Profile picture could not be saved: ${error.message}`;
+      return;
+    }
+  }
 
   const updates = { data: metadata };
   if (accountEls.password.value) updates.password = accountEls.password.value;
@@ -1209,7 +1247,7 @@ async function initializeAuth() {
 
   supabaseClient = window.supabase.createClient(window.POTATO_SUPABASE_URL, window.POTATO_SUPABASE_ANON_KEY);
   supabaseClient.auth.onAuthStateChange((_event, session) => {
-    if (session) showAuthenticatedApp(session);
+    if (session) void showAuthenticatedApp(session);
     else showSignedOutApp();
   });
 
