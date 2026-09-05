@@ -147,32 +147,58 @@ async function saveState() {
 async function loadRemoteState() {
   if (!supabaseClient || !currentSession) return;
 
+  const sessionId = currentSession.user.id;
   const localState = state;
-  const { data, error } = await supabaseClient
-    .from('user_print_manager_data')
-    .select('data')
-    .eq('user_id', currentSession.user.id)
-    .maybeSingle();
+  let data;
+  let error;
 
-  if (error) {
-    console.error('Could not load print manager data:', error.message);
-    remoteDataReady = true;
+  try {
+    ({ data, error } = await supabaseClient
+      .from('user_print_manager_data')
+      .select('data')
+      .eq('user_id', sessionId)
+      .maybeSingle());
+  } catch (requestError) {
+    console.error('Could not load print manager data:', requestError);
+    remoteDataReady = false;
     return;
   }
 
+  if (error) {
+    console.error('Could not load print manager data:', error.message);
+    remoteDataReady = false;
+    return;
+  }
+
+  if (!currentSession || currentSession.user.id !== sessionId) return;
+
   if (data?.data) {
+    let remoteState = data.data;
+    if (typeof remoteState === 'string') {
+      try {
+        remoteState = JSON.parse(remoteState);
+      } catch (parseError) {
+        console.error('Could not parse saved print manager data:', parseError);
+        remoteDataReady = false;
+        return;
+      }
+    }
     state = {
       ...structuredClone(defaultState),
-      ...data.data,
-      settings: { ...defaultState.settings, ...(data.data.settings || {}) }
+      ...remoteState,
+      settings: {
+        ...defaultState.settings,
+        ...(remoteState.settings || {})
+      }
     };
   } else {
     state = localState;
     await supabaseClient
       .from('user_print_manager_data')
-      .upsert({ user_id: currentSession.user.id, data: state }, { onConflict: 'user_id' });
+      .upsert({ user_id: sessionId, data: state }, { onConflict: 'user_id' });
   }
 
+  if (!currentSession || currentSession.user.id !== sessionId) return;
   remoteDataReady = true;
   render();
 }
