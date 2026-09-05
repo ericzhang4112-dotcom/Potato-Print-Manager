@@ -40,6 +40,11 @@ create trigger set_print_manager_data_updated_at
 before update on public.user_print_manager_data
 for each row execute function public.set_print_manager_data_updated_at();
 
+-- Remove legacy profile-image data that was previously stored in Auth metadata.
+update auth.users
+set raw_user_meta_data = raw_user_meta_data - 'avatar_data' - 'avatar_url'
+where raw_user_meta_data ? 'avatar_data' or raw_user_meta_data ? 'avatar_url';
+
 insert into storage.buckets (id, name, public)
 values ('profile-pictures', 'profile-pictures', true)
 on conflict (id) do update set public = true;
